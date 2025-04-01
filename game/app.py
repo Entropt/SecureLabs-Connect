@@ -25,7 +25,7 @@ class ReverseProxied:
         return self.app(environ, start_response)
 
 
-app = Flask('pylti1p3-game-example', template_folder='templates', static_folder='static')
+app = Flask('Thesis', template_folder='templates', static_folder='static')
 app.wsgi_app = ReverseProxied(app.wsgi_app)
 
 config = {
@@ -36,7 +36,7 @@ config = {
     "SECRET_KEY": "replace-me",
     "SESSION_TYPE": "filesystem",
     "SESSION_FILE_DIR": mkdtemp(),
-    "SESSION_COOKIE_NAME": "pylti1p3-flask-app-sessionid",
+    "SESSION_COOKIE_NAME": "Thesis",
     "SESSION_COOKIE_HTTPONLY": True,
     "SESSION_COOKIE_SECURE": False,   # should be True in case of HTTPS usage (production)
     "SESSION_COOKIE_SAMESITE": None,  # should be 'None' in case of HTTPS usage (production)
@@ -125,7 +125,7 @@ def launch():
 @app.route('/jwks/', methods=['GET'])
 def get_jwks():
     tool_conf = ToolConfJsonFile(get_lti_config_path())
-    return jsonify({'keys': tool_conf.get_jwks()})
+    return jsonify(tool_conf.get_jwks()["keys"][0])
 
 
 @app.route('/configure/<launch_id>/<difficulty>/', methods=['GET', 'POST'])
