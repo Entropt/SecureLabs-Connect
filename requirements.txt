@@ -3,3 +3,4 @@ flask-caching
 flask-session2
 pylti1p3
 werkzeug
+requests

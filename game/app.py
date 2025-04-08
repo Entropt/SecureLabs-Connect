@@ -1,9 +1,11 @@
 import datetime
 import os
 import pprint
+import requests
+import json
 
 from tempfile import mkdtemp
-from flask import Flask, jsonify, request, render_template, url_for
+from flask import Flask, jsonify, request, render_template, url_for, redirect
 from flask_caching import Cache
 from werkzeug.exceptions import Forbidden
 from pylti1p3.contrib.flask import FlaskOIDCLogin, FlaskMessageLaunch, FlaskRequest, FlaskCacheDataStorage
@@ -40,12 +42,13 @@ config = {
     "SESSION_COOKIE_HTTPONLY": True,
     "SESSION_COOKIE_SECURE": False,   # should be True in case of HTTPS usage (production)
     "SESSION_COOKIE_SAMESITE": None,  # should be 'None' in case of HTTPS usage (production)
-    "DEBUG_TB_INTERCEPT_REDIRECTS": False
+    "DEBUG_TB_INTERCEPT_REDIRECTS": False,
+    "JUICE_SHOP_URL": "http://172.22.183.134:3000"  # Add Juice Shop URL
 }
 app.config.from_mapping(config)
 cache = Cache(app)
 
-PAGE_TITLE = 'Game Example'
+PAGE_TITLE = 'Security Challenges'
 
 
 class ExtendedFlaskMessageLaunch(FlaskMessageLaunch):
@@ -81,6 +84,26 @@ def get_jwk_from_public_key(key_name):
     return jwk
 
 
+def get_juice_shop_challenges():
+    """Fetch challenges from Juice Shop API"""
+    try:
+        response = requests.get(f"{app.config['JUICE_SHOP_URL']}/api/challenges/", 
+                                headers={
+                                    'Accept-Language': 'en-GB,en;q=0.9',
+                                    'Accept': 'application/json, text/plain, */*',
+                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+                                    'Connection': 'keep-alive'
+                                })
+        if response.status_code == 200:
+            return response.json().get('data', [])
+        else:
+            app.logger.error(f"Failed to fetch challenges: {response.status_code}")
+            return []
+    except Exception as e:
+        app.logger.error(f"Error fetching challenges: {str(e)}")
+        return []
+
+
 @app.route('/login/', methods=['GET', 'POST'])
 def login():
     tool_conf = ToolConfJsonFile(get_lti_config_path())
@@ -106,10 +129,16 @@ def launch():
     message_launch_data = message_launch.get_launch_data()
     pprint.pprint(message_launch_data)
 
-    difficulty = message_launch_data.get('https://purl.imsglobal.org/spec/lti/claim/custom', {}) \
-        .get('difficulty', None)
-    if not difficulty:
-        difficulty = request.args.get('difficulty', 'normal')
+    # Fetch challenges from Juice Shop
+    challenges = get_juice_shop_challenges()
+    
+    # Group challenges by category for better organization
+    challenge_categories = {}
+    for challenge in challenges:
+        category = challenge.get('category', 'Uncategorized')
+        if category not in challenge_categories:
+            challenge_categories[category] = []
+        challenge_categories[category].append(challenge)
 
     tpl_kwargs = {
         'page_title': PAGE_TITLE,
@@ -117,7 +146,8 @@ def launch():
         'launch_data': message_launch.get_launch_data(),
         'launch_id': message_launch.get_launch_id(),
         'curr_user_name': message_launch_data.get('name', ''),
-        'curr_diff': difficulty
+        'challenges': challenges,
+        'challenge_categories': challenge_categories
     }
     return render_template('game.html', **tpl_kwargs)
 
@@ -128,26 +158,34 @@ def get_jwks():
     return tool_conf.get_jwks()["keys"][0]
 
 
-@app.route('/configure/<launch_id>/<difficulty>/', methods=['GET', 'POST'])
-def configure(launch_id, difficulty):
+@app.route('/configure/<launch_id>/<int:challenge_id>/', methods=['GET', 'POST'])
+def configure(launch_id, challenge_id):
     tool_conf = ToolConfJsonFile(get_lti_config_path())
     flask_request = FlaskRequest()
     launch_data_storage = get_launch_data_storage()
     message_launch = ExtendedFlaskMessageLaunch.from_cache(launch_id, flask_request, tool_conf,
-                                                           launch_data_storage=launch_data_storage)
+                                                        launch_data_storage=launch_data_storage)
 
     if not message_launch.is_deep_link_launch():
-        raise Forbidden('Must be a deep link!')
+        # For regular launches, redirect directly to Juice Shop
+        return redirect(f"{app.config['JUICE_SHOP_URL']}/#/challenge")
 
-    launch_url = url_for('launch', _external=True)
+    # For deep linking, create a resource that will redirect to Juice Shop
+    launch_url = f"{app.config['JUICE_SHOP_URL']}/#/challenge"
 
     resource = DeepLinkResource()
-    resource.set_url(launch_url + '?difficulty=' + difficulty) \
-        .set_custom_params({'difficulty': difficulty}) \
-        .set_title('Breakout ' + difficulty + ' mode!')
+    resource.set_url(launch_url) \
+        .set_custom_params({'challenge_id': challenge_id}) \
+        .set_title('Security Challenge')
 
     html = message_launch.get_deep_link().output_response_form([resource])
     return html
+
+
+@app.route('/redirect-to-challenge/<int:challenge_id>/', methods=['GET'])
+def redirect_to_challenge(challenge_id):
+    """Redirect to the specific challenge on Juice Shop"""
+    return redirect(f"{app.config['JUICE_SHOP_URL']}/#/challenge")
 
 
 @app.route('/api/score/<launch_id>/<earned_score>/', methods=['POST'])
@@ -156,7 +194,7 @@ def score(launch_id, earned_score):
     flask_request = FlaskRequest()
     launch_data_storage = get_launch_data_storage()
     message_launch = ExtendedFlaskMessageLaunch.from_cache(launch_id, flask_request, tool_conf,
-                                                           launch_data_storage=launch_data_storage)
+                                                        launch_data_storage=launch_data_storage)
 
     if not message_launch.has_ags():
         raise Forbidden("Don't have grades!")
@@ -183,13 +221,34 @@ def score(launch_id, earned_score):
     return jsonify({'success': True, 'result': result.get('body')})
 
 
+@app.route('/api/check-challenge-status/<launch_id>/<int:challenge_id>/', methods=['GET'])
+def check_challenge_status(launch_id, challenge_id):
+    """Check if a challenge has been solved by calling Juice Shop API"""
+    try:
+        # Fetch the current status of all challenges
+        challenges = get_juice_shop_challenges()
+        
+        # Find the specific challenge
+        for challenge in challenges:
+            if challenge.get('id') == challenge_id:
+                # Return the solved status
+                return jsonify({
+                    'id': challenge_id,
+                    'solved': challenge.get('solved', False)
+                })
+        
+        return jsonify({'error': 'Challenge not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/scoreboard/<launch_id>/', methods=['GET', 'POST'])
 def scoreboard(launch_id):
     tool_conf = ToolConfJsonFile(get_lti_config_path())
     flask_request = FlaskRequest()
     launch_data_storage = get_launch_data_storage()
     message_launch = ExtendedFlaskMessageLaunch.from_cache(launch_id, flask_request, tool_conf,
-                                                           launch_data_storage=launch_data_storage)
+                                                        launch_data_storage=launch_data_storage)
 
     if not message_launch.has_nrps():
         raise Forbidden("Don't have names and roles!")
