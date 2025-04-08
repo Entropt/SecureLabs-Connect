@@ -125,7 +125,7 @@ def launch():
 @app.route('/jwks/', methods=['GET'])
 def get_jwks():
     tool_conf = ToolConfJsonFile(get_lti_config_path())
-    return jsonify(tool_conf.get_jwks()["keys"][0])
+    return tool_conf.get_jwks()["keys"][0]
 
 
 @app.route('/configure/<launch_id>/<difficulty>/', methods=['GET', 'POST'])
@@ -150,26 +150,24 @@ def configure(launch_id, difficulty):
     return html
 
 
-@app.route('/api/score/<launch_id>/<earned_score>/<time_spent>/', methods=['POST'])
-def score(launch_id, earned_score, time_spent):
+@app.route('/api/score/<launch_id>/<earned_score>/', methods=['POST'])
+def score(launch_id, earned_score):
     tool_conf = ToolConfJsonFile(get_lti_config_path())
     flask_request = FlaskRequest()
     launch_data_storage = get_launch_data_storage()
     message_launch = ExtendedFlaskMessageLaunch.from_cache(launch_id, flask_request, tool_conf,
                                                            launch_data_storage=launch_data_storage)
 
-    resource_link_id = message_launch.get_launch_data() \
-        .get('https://purl.imsglobal.org/spec/lti/claim/resource_link', {}).get('id')
-
     if not message_launch.has_ags():
         raise Forbidden("Don't have grades!")
 
     sub = message_launch.get_launch_data().get('sub')
-    timestamp = datetime.datetime.utcnow().isoformat() + 'Z'
+    timestamp = datetime.datetime.now().isoformat() + 'Z'
     earned_score = int(earned_score)
-    time_spent = int(time_spent)
 
     grades = message_launch.get_ags()
+    
+    # Create a Grade object
     sc = Grade()
     sc.set_score_given(earned_score) \
         .set_score_maximum(100) \
@@ -177,32 +175,10 @@ def score(launch_id, earned_score, time_spent):
         .set_activity_progress('Completed') \
         .set_grading_progress('FullyGraded') \
         .set_user_id(sub)
-
-    sc_line_item = LineItem()
-    sc_line_item.set_tag('score') \
-        .set_score_maximum(100) \
-        .set_label('Score')
-    if resource_link_id:
-        sc_line_item.set_resource_id(resource_link_id)
-
-    grades.put_grade(sc, sc_line_item)
-
-    tm = Grade()
-    tm.set_score_given(time_spent) \
-        .set_score_maximum(999) \
-        .set_timestamp(timestamp) \
-        .set_activity_progress('Completed') \
-        .set_grading_progress('FullyGraded') \
-        .set_user_id(sub)
-
-    tm_line_item = LineItem()
-    tm_line_item.set_tag('time') \
-        .set_score_maximum(999) \
-        .set_label('Time Taken')
-    if resource_link_id:
-        tm_line_item.set_resource_id(resource_link_id)
-
-    result = grades.put_grade(tm, tm_line_item)
+    
+    # Use the default line item (don't create a new one)
+    # This will post the grade back to the original assignment
+    result = grades.put_grade(sc)
 
     return jsonify({'success': True, 'result': result.get('body')})
 
@@ -215,9 +191,6 @@ def scoreboard(launch_id):
     message_launch = ExtendedFlaskMessageLaunch.from_cache(launch_id, flask_request, tool_conf,
                                                            launch_data_storage=launch_data_storage)
 
-    resource_link_id = message_launch.get_launch_data() \
-        .get('https://purl.imsglobal.org/spec/lti/claim/resource_link', {}).get('id')
-
     if not message_launch.has_nrps():
         raise Forbidden("Don't have names and roles!")
 
@@ -225,44 +198,23 @@ def scoreboard(launch_id):
         raise Forbidden("Don't have grades!")
 
     ags = message_launch.get_ags()
-
-    if ags.can_create_lineitem():
-        score_line_item = LineItem()
-        score_line_item.set_tag('score') \
-            .set_score_maximum(100) \
-            .set_label('Score')
-        if resource_link_id:
-            score_line_item.set_resource_id(resource_link_id)
-
-        score_line_item = ags.find_or_create_lineitem(score_line_item)
-        scores = ags.get_grades(score_line_item)
-
-        time_line_item = LineItem()
-        time_line_item.set_tag('time') \
-            .set_score_maximum(999) \
-            .set_label('Time Taken')
-        if resource_link_id:
-            time_line_item.set_resource_id(resource_link_id)
-
-        time_line_item = ags.find_or_create_lineitem(time_line_item)
-        times = ags.get_grades(time_line_item)
-    else:
-        scores = ags.get_grades()
-        times = None
-
+    
+    # Get grades from the default line item
+    scores = ags.get_grades()
+    
     members = message_launch.get_nrps().get_members()
     scoreboard_result = []
 
     for sc in scores:
-        result = {'score': sc['resultScore']}
-        for tm in times:
-            if tm['userId'] == sc['userId']:
-                result['time'] = tm['resultScore']
-                break
+        result = {
+            'score': sc['resultScore']
+        }
+        
         for member in members:
             if member['user_id'] == sc['userId']:
                 result['name'] = member.get('name', 'Unknown')
                 break
+        
         scoreboard_result.append(result)
 
     return jsonify(scoreboard_result)

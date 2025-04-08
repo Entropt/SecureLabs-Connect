@@ -438,9 +438,9 @@ function mainGame() {
     var refreshScoreBoard = function () {
         var scores = JSON.parse(this.responseText);
         console.log(scores);
-        var output = '<tr><th>Score</th><th>Time</th><th>Name</th></tr>';
+        var output = '<tr><th>Score</th><th>Name</th></tr>'; // Removed Time column
         for (var i = 0; i < scores.length; i++) {
-            output += '<tr><td>' + scores[i].score + '</td><td>' + scores[i].time + 's</td><td>' + scores[i].name + '</td></tr>';
+            output += '<tr><td>' + scores[i].score + '</td><td>' + scores[i].name + '</td></tr>'; // Removed Time cell
         }
         document.getElementById("leadertable").innerHTML = output;
     };
@@ -449,7 +449,7 @@ function mainGame() {
         var time_taken = Math.floor(Date.now() / 1000) - startTime;
         var xhttp = new XMLHttpRequest();
         xhttp.addEventListener("load", getScoreBoard);
-        xhttp.open("POST", "/api/score/" + launchId + "/" + score + "/" + time_taken + "/", false);
+        xhttp.open("POST", "/api/score/" + launchId + "/" + score + "/", false);
         xhttp.send();
     };
 
