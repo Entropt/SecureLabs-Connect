@@ -19,13 +19,46 @@
 
     {% if is_deep_link_launch %}
     <div class="challenge-container">
+        <!-- Search bar added here -->
+        <div class="search-container">
+            <input type="text" id="searchInput" placeholder="Search challenges..." class="search-input">
+            <div class="search-options">
+                <label>
+                    <input type="checkbox" id="searchName" checked> Name
+                </label>
+                <label>
+                    <input type="checkbox" id="searchDescription" checked> Description
+                </label>
+                <label>
+                    <input type="checkbox" id="searchCategory" checked> Category
+                </label>
+                <select id="difficultyFilter">
+                    <option value="all">All Difficulties</option>
+                    <option value="1">★</option>
+                    <option value="2">★★</option>
+                    <option value="3">★★★</option>
+                    <option value="4">★★★★</option>
+                    <option value="5">★★★★★</option>
+                    <option value="6">★★★★★★</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="searchStats" class="search-stats">
+            Showing all challenges
+        </div>
+
         {% if challenge_categories %}
             {% for category, challenges in challenge_categories.items() %}
-                <div class="category-section">
+                <div class="category-section" data-category="{{ category }}">
                     <h2 class="category-title">{{ category }}</h2>
                     <div class="challenges-grid">
                         {% for challenge in challenges %}
-                            <div class="challenge-card">
+                            <div class="challenge-card" 
+                                 data-name="{{ challenge.name }}" 
+                                 data-description="{{ challenge.description }}" 
+                                 data-category="{{ category }}"
+                                 data-difficulty="{{ challenge.difficulty or 0 }}">
                                 <div class="challenge-name">{{ challenge.name }}</div>
                                 <div class="challenge-description">{{ challenge.description }}</div>
                                 <div class="challenge-meta">
@@ -50,6 +83,88 @@
             </div>
         {% endif %}
     </div>
+
+    <!-- Search functionality script -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const searchInput = document.getElementById('searchInput');
+            const searchName = document.getElementById('searchName');
+            const searchDescription = document.getElementById('searchDescription');
+            const searchCategory = document.getElementById('searchCategory');
+            const difficultyFilter = document.getElementById('difficultyFilter');
+            const searchStats = document.getElementById('searchStats');
+            const categorySections = document.querySelectorAll('.category-section');
+            const challengeCards = document.querySelectorAll('.challenge-card');
+            
+            // Function to update search stats
+            function updateSearchStats(visibleCount) {
+                const totalCount = challengeCards.length;
+                if (visibleCount === totalCount) {
+                    searchStats.textContent = `Showing all ${totalCount} challenges`;
+                } else {
+                    searchStats.textContent = `Showing ${visibleCount} of ${totalCount} challenges`;
+                }
+            }
+            
+            // Search function
+            function performSearch() {
+                const searchTerm = searchInput.value.toLowerCase();
+                const selectedDifficulty = difficultyFilter.value;
+                let visibleCount = 0;
+                
+                // Reset all sections visibility
+                categorySections.forEach(section => {
+                    section.style.display = 'block';
+                    section.querySelectorAll('.challenge-card').forEach(card => {
+                        card.style.display = 'none';
+                    });
+                });
+                
+                // Filter challenges based on search criteria
+                challengeCards.forEach(card => {
+                    const name = card.getAttribute('data-name').toLowerCase();
+                    const description = card.getAttribute('data-description').toLowerCase();
+                    const category = card.getAttribute('data-category').toLowerCase();
+                    const difficulty = parseInt(card.getAttribute('data-difficulty'));
+                    
+                    // Check if card matches search term
+                    const nameMatch = searchName.checked && name.includes(searchTerm);
+                    const descriptionMatch = searchDescription.checked && description.includes(searchTerm);
+                    const categoryMatch = searchCategory.checked && category.includes(searchTerm);
+                    
+                    // Check if card matches difficulty filter
+                    const difficultyMatch = selectedDifficulty === 'all' || parseInt(selectedDifficulty) === difficulty;
+                    
+                    // Show card if it matches search criteria
+                    if ((nameMatch || descriptionMatch || categoryMatch) && difficultyMatch) {
+                        card.style.display = 'flex';
+                        visibleCount++;
+                    }
+                });
+                
+                // Hide empty sections
+                categorySections.forEach(section => {
+                    const visibleCards = section.querySelectorAll('.challenge-card[style="display: flex;"]');
+                    if (visibleCards.length === 0) {
+                        section.style.display = 'none';
+                    }
+                });
+                
+                // Update search stats
+                updateSearchStats(visibleCount);
+            }
+            
+            // Event listeners
+            searchInput.addEventListener('input', performSearch);
+            searchName.addEventListener('change', performSearch);
+            searchDescription.addEventListener('change', performSearch);
+            searchCategory.addEventListener('change', performSearch);
+            difficultyFilter.addEventListener('change', performSearch);
+            
+            // Initialize with all challenges
+            updateSearchStats(challengeCards.length);
+        });
+    </script>
     {% else %}
     <div class="challenge-container">
         <div class="category-section">

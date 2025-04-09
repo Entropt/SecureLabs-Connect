@@ -43,7 +43,7 @@ config = {
     "SESSION_COOKIE_SECURE": False,   # should be True in case of HTTPS usage (production)
     "SESSION_COOKIE_SAMESITE": None,  # should be 'None' in case of HTTPS usage (production)
     "DEBUG_TB_INTERCEPT_REDIRECTS": False,
-    "JUICE_SHOP_URL": "http://172.22.183.134:3000"  # Add Juice Shop URL
+    "JUICE_SHOP_URL": "http://172.22.183.134:3000"  # Add your IP address as Juice Shop URL
 }
 app.config.from_mapping(config)
 cache = Cache(app)

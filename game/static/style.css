@@ -118,3 +118,83 @@ header h1 {
     margin-top: 5px;
     font-size: 14px;
 }
+
+/* New styles for search functionality */
+.search-container {
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 20px;
+    margin-bottom: 20px;
+    display: flex;
+    flex-direction: column;
+}
+
+.search-input {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    font-size: 16px;
+    margin-bottom: 15px;
+    transition: border-color 0.2s;
+}
+
+.search-input:focus {
+    border-color: #4285f4;
+    outline: none;
+}
+
+.search-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    align-items: center;
+}
+
+.search-options label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 14px;
+    color: #666;
+    cursor: pointer;
+}
+
+.search-options input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+}
+
+.search-options select {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background-color: white;
+    font-size: 14px;
+    color: #666;
+    cursor: pointer;
+}
+
+.search-stats {
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 12px 20px;
+    margin-bottom: 20px;
+    color: #666;
+    font-size: 14px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .search-options {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .challenges-grid {
+        grid-template-columns: 1fr;
+    }
+}
