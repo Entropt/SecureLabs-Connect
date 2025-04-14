@@ -35,7 +35,7 @@
 3. Add the following information for LTI Key in Canvas LMS
     ```
     OIDC Login URL: http://<ip_address>:9001/login/
-    LTI Launch URL: http://<ip_address>:9001/launch/
+    LTI Launch URL: http://<ip_address>:9001/assignment/
     JWKS URL: http://<ip_address>:9001/jwks/
     ```
 
