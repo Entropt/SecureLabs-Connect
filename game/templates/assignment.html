@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>{{ page_title }}</title>
+    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css?family=Roboto&display=swap" rel="stylesheet">
+    <script type="text/javascript">
+        var launchId = "{{ launch_id }}";
+        var userId = "{{ user_id }}";
+        var assignmentId = "{{ assignment_id }}";
+    </script>
+</head>
+
+<body>
+    <header>
+        <h1>Security Challenge Lab Environment</h1>
+    </header>
+
+    <div class="challenge-container">
+        <div class="instance-management-container">
+            <div class="instance-status-card">
+                <h2>Your Juice Shop Instance</h2>
+                
+                <div id="loading" class="status-section">
+                    <div class="loader"></div>
+                    <p>Checking instance status...</p>
+                </div>
+                
+                <div id="instance-exists" class="status-section" style="display: none;">
+                    <div class="status-indicator active"></div>
+                    <p>Your instance is running</p>
+                    <div class="instance-details">
+                        <p>Instance URL: <a id="instance-url" href="#" target="_blank"></a></p>
+                        <p>Created: <span id="instance-created"></span></p>
+                    </div>
+                    <div class="button-group">
+                        <button id="continue-btn" class="primary-button">Continue to Instance</button>
+                        <button id="restart-btn" class="secondary-button">Restart Instance</button>
+                    </div>
+                </div>
+                
+                <div id="no-instance" class="status-section" style="display: none;">
+                    <div class="status-indicator inactive"></div>
+                    <p>No active instance found</p>
+                    <div class="button-group">
+                        <button id="create-btn" class="primary-button">Create New Instance</button>
+                    </div>
+                </div>
+                
+                <div id="creating-instance" class="status-section" style="display: none;">
+                    <div class="loader"></div>
+                    <p>Creating your Juice Shop instance...</p>
+                    <p>This may take a minute or two. Please be patient.</p>
+                </div>
+                
+                <div id="error-message" class="status-section error" style="display: none;">
+                    <p>Error: <span id="error-text"></span></p>
+                    <button id="retry-btn" class="secondary-button">Retry</button>
+                </div>
+            </div>
+            
+            <div class="assignment-progress-card">
+                <h2>Assignment Progress</h2>
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div id="progress-fill" class="progress-fill" style="width: 0%"></div>
+                    </div>
+                    <div class="progress-stats">
+                        <span id="completed-challenges">0</span> / <span id="total-challenges">0</span> challenges completed
+                    </div>
+                </div>
+                
+                <div id="challenge-list" class="challenge-list">
+                    <!-- Challenges will be added here dynamically -->
+                    <div class="loading-challenges">Loading challenges...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='assignment.js') }}"></script>
+</body>
+
+</html>

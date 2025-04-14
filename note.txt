@@ -1,0 +1,4 @@
+Có 1 database để lưu dữ liệu gồm các cột sau: id, user_id, port đang mở cho user.
+- Check xem có đúng user vào port đấy không
+- Check xem user có cần reset port hay không
+
