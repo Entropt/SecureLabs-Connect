@@ -13,7 +13,7 @@
 
 <body>
     <header>
-        <h1>List of Security Challenges</h1>
+        <h1>Select Security Challenges for Assignment</h1>
     </header>
 
     {% if is_deep_link_launch %}
@@ -47,6 +47,14 @@
             Showing all challenges
         </div>
 
+        <!-- Submit button and selected counter -->
+        <div class="selection-controls">
+            <div class="selected-counter">
+                <span id="selectedCount">0</span> challenges selected
+            </div>
+            <button id="submitSelectedBtn" class="primary-button" disabled>Save Selected Challenges</button>
+        </div>
+
         {% if challenge_categories %}
             {% for category, challenges in challenge_categories.items() %}
                 <div class="category-section" data-category="{{ category }}">
@@ -57,7 +65,11 @@
                                  data-name="{{ challenge.name }}" 
                                  data-description="{{ challenge.description }}" 
                                  data-category="{{ category }}"
+                                 data-id="{{ challenge.id }}"
                                  data-difficulty="{{ challenge.difficulty or 0 }}">
+                                <div class="challenge-checkbox">
+                                    <input type="checkbox" class="challenge-select" id="challenge-{{ challenge.id }}">
+                                </div>
                                 <div class="challenge-name">{{ challenge.name }}</div>
                                 <div class="challenge-description">{{ challenge.description }}</div>
                                 <div class="challenge-meta">
@@ -68,9 +80,6 @@
                                         </span>
                                     </div>
                                 </div>
-                                <a href="{{ url_for('configure', launch_id=launch_id, challenge_id=challenge.id) }}" class="select-button">
-                                    Select Challenge
-                                </a>
                             </div>
                         {% endfor %}
                     </div>
@@ -83,7 +92,19 @@
         {% endif %}
     </div>
 
-    <!-- Search functionality script -->
+    <!-- Modal for success message -->
+    <div id="successModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Success!</h2>
+            <p>The selected challenges have been saved to the assignment.</p>
+            <div class="modal-footer">
+                <button id="closeModalBtn" class="primary-button">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search and selection functionality script -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const searchInput = document.getElementById('searchInput');
@@ -94,6 +115,12 @@
             const searchStats = document.getElementById('searchStats');
             const categorySections = document.querySelectorAll('.category-section');
             const challengeCards = document.querySelectorAll('.challenge-card');
+            const challengeCheckboxes = document.querySelectorAll('.challenge-select');
+            const selectedCount = document.getElementById('selectedCount');
+            const submitSelectedBtn = document.getElementById('submitSelectedBtn');
+            const successModal = document.getElementById('successModal');
+            const closeModalBtn = document.getElementById('closeModalBtn');
+            const modalClose = document.querySelector('.close');
             
             // Function to update search stats
             function updateSearchStats(visibleCount) {
@@ -153,7 +180,116 @@
                 updateSearchStats(visibleCount);
             }
             
-            // Event listeners
+            // Update selected count and submit button state
+            function updateSelectedCount() {
+                const selectedChallenges = document.querySelectorAll('.challenge-select:checked');
+                selectedCount.textContent = selectedChallenges.length;
+                
+                if (selectedChallenges.length > 0) {
+                    submitSelectedBtn.removeAttribute('disabled');
+                } else {
+                    submitSelectedBtn.setAttribute('disabled', true);
+                }
+            }
+            
+            // Add event listener to checkboxes
+            challengeCheckboxes.forEach(checkbox => {
+                checkbox.addEventListener('change', updateSelectedCount);
+            });
+            
+            // Submit selected challenges
+            submitSelectedBtn.addEventListener('click', function() {
+                const selectedChallenges = [];
+                
+                // Get all selected challenges
+                document.querySelectorAll('.challenge-select:checked').forEach(checkbox => {
+                    const card = checkbox.closest('.challenge-card');
+                    selectedChallenges.push({
+                        id: parseInt(card.getAttribute('data-id')),
+                        name: card.getAttribute('data-name'),
+                        description: card.getAttribute('data-description'),
+                        difficulty: parseInt(card.getAttribute('data-difficulty')),
+                        category: card.getAttribute('data-category')
+                    });
+                });
+                
+                // Update button text to show loading
+                submitSelectedBtn.textContent = 'Saving...';
+                submitSelectedBtn.disabled = true;
+                
+                // Send to server
+                fetch(`/configure/${launchId}/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        challenges: selectedChallenges
+                    }),
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Show success modal
+                        successModal.style.display = 'block';
+                        
+                        // Use the return URL provided by the server
+                        const returnUrl = data.return_url;
+                        
+                        console.log('Return URL:', returnUrl);
+                        console.log('JWT Token:', data.deep_link_jwt);
+                        
+                        // Create a form with the correct action URL
+                        const form = document.createElement('form');
+                        form.method = 'POST';
+                        form.action = returnUrl;
+                        form.style.display = 'none'; // Hide the form
+                        
+                        const input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'JWT';
+                        input.value = data.deep_link_jwt;
+                        
+                        form.appendChild(input);
+                        document.body.appendChild(form);
+                        
+                        // Submit the form after a short delay
+                        setTimeout(() => {
+                            console.log('Submitting form to:', returnUrl);
+                            form.submit();
+                        }, 1500);
+                    } else {
+                        submitSelectedBtn.textContent = 'Save Selected Challenges';
+                        submitSelectedBtn.disabled = false;
+                        alert('Error saving challenges: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    submitSelectedBtn.textContent = 'Save Selected Challenges';
+                    submitSelectedBtn.disabled = false;
+                    alert('Error saving challenges. Please try again.');
+                });
+            });
+            
+            // Close modal when clicking the close button
+            closeModalBtn.addEventListener('click', function() {
+                successModal.style.display = 'none';
+            });
+            
+            // Close modal when clicking the X
+            modalClose.addEventListener('click', function() {
+                successModal.style.display = 'none';
+            });
+            
+            // Close modal when clicking outside of it
+            window.addEventListener('click', function(event) {
+                if (event.target === successModal) {
+                    successModal.style.display = 'none';
+                }
+            });
+            
+            // Event listeners for search
             searchInput.addEventListener('input', performSearch);
             searchName.addEventListener('change', performSearch);
             searchDescription.addEventListener('change', performSearch);
@@ -162,6 +298,7 @@
             
             // Initialize with all challenges
             updateSearchStats(challengeCards.length);
+            updateSelectedCount();
         });
     </script>
     {% else %}

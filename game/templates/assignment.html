@@ -78,6 +78,55 @@
                 </div>
             </div>
         </div>
+        
+        <!-- Challenge detail view -->
+        <div id="challenge-detail" class="challenge-detail-card" style="display: none;">
+            <h2 id="detail-title">Challenge Details</h2>
+            <div class="detail-content">
+                <h3 id="detail-name"></h3>
+                <div class="detail-meta">
+                    <div class="difficulty">
+                        Difficulty: <span id="detail-difficulty" class="difficulty-stars"></span>
+                    </div>
+                    <div class="status">
+                        Status: <span id="detail-status"></span>
+                    </div>
+                </div>
+                <div class="detail-description">
+                    <h4>Description:</h4>
+                    <p id="detail-description"></p>
+                </div>
+                <div class="button-group">
+                    <button id="close-detail-btn" class="secondary-button">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Challenge detail modal -->
+    <div id="challenge-modal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="modal-title">Challenge Details</h2>
+            <div class="modal-body">
+                <h3 id="modal-name"></h3>
+                <div class="modal-meta">
+                    <div class="difficulty">
+                        Difficulty: <span id="modal-difficulty" class="difficulty-stars"></span>
+                    </div>
+                    <div class="status">
+                        Status: <span id="modal-status"></span>
+                    </div>
+                </div>
+                <div class="modal-description">
+                    <h4>Description:</h4>
+                    <p id="modal-description"></p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="close-modal-btn" class="primary-button">Close</button>
+            </div>
+        </div>
     </div>
 
     <script src="{{ url_for('static', filename='assignment.js') }}"></script>

@@ -1,4 +1,3 @@
-import datetime
 import os
 import pprint
 import requests
@@ -6,6 +5,9 @@ import subprocess
 import threading
 import time
 import random
+import signal
+import sys
+import json
 from datetime import datetime, timedelta
 import sqlite3
 
@@ -61,6 +63,9 @@ cache = Cache(app)
 
 PAGE_TITLE = 'Security Challenges'
 
+# Running docker containers
+running_containers = []
+
 # Initialize database
 def init_db():
     """Initialize the SQLite database for tracking Juice Shop instances"""
@@ -90,6 +95,19 @@ def init_db():
         solved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         assignment_id TEXT,
         UNIQUE(user_id, challenge_id, assignment_id)
+    )
+    ''')
+    
+    # Create assignment challenges table (NEW)
+    c.execute('''
+    CREATE TABLE IF NOT EXISTS assignment_challenges (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        assignment_id TEXT NOT NULL,
+        challenge_id INTEGER NOT NULL,
+        challenge_name TEXT NOT NULL,
+        challenge_description TEXT,
+        challenge_difficulty INTEGER,
+        UNIQUE(assignment_id, challenge_id)
     )
     ''')
     
@@ -146,6 +164,7 @@ def get_juice_shop_challenges():
                             })
     if response.status_code == 200:
         return response.json().get('data', [])
+    return []
 
 
 def get_user_instance(user_id):
@@ -206,6 +225,7 @@ def create_docker_instance(user_id, assignment_id=None):
         existing_instance = c.fetchone()
         
         if existing_instance:
+            conn.close()
             return {
                 'success': False,
                 'message': 'User already has a running instance',
@@ -233,6 +253,10 @@ def create_docker_instance(user_id, assignment_id=None):
             raise Exception(f"Failed to create Docker container: {result.stderr}")
         
         container_id = result.stdout.strip()
+        
+        # Keep track of running containers
+        global running_containers
+        running_containers.append(container_id)
         
         # Save instance info to database
         c.execute("""
@@ -288,6 +312,11 @@ def restart_docker_instance(user_id):
         c.execute("UPDATE instances SET status='stopped' WHERE id=?", (instance['id'],))
         conn.commit()
         
+        # Remove from running containers list
+        global running_containers
+        if container_id in running_containers:
+            running_containers.remove(container_id)
+        
         # Create a new instance
         conn.close()
         
@@ -320,6 +349,11 @@ def cleanup_expired_instances():
             try:
                 stop_cmd = ["docker", "stop", container_id]
                 subprocess.run(stop_cmd, capture_output=True, text=True)
+                
+                # Remove from running containers list
+                global running_containers
+                if container_id in running_containers:
+                    running_containers.remove(container_id)
             except Exception as e:
                 app.logger.error(f"Error stopping container {container_id}: {str(e)}")
             
@@ -336,6 +370,23 @@ def cleanup_expired_instances():
         return {'success': False, 'message': str(e)}
 
 
+def get_assigned_challenges(assignment_id):
+    """Get challenges assigned to a specific assignment"""
+    conn = sqlite3.connect(app.config['DB_PATH'])
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    
+    c.execute("""
+        SELECT * FROM assignment_challenges 
+        WHERE assignment_id = ?
+    """, (assignment_id,))
+    
+    challenges = [dict(row) for row in c.fetchall()]
+    conn.close()
+    
+    return challenges
+
+
 def get_user_challenges(user_id, assignment_id=None):
     """Get challenges and user's progress for a specific assignment"""
     try:
@@ -345,7 +396,7 @@ def get_user_challenges(user_id, assignment_id=None):
         if not instance['exists']:
             return {'challenges': [], 'completed': 0, 'total': 0}
         
-        # Fetch challenges from Juice Shop
+        # Fetch all challenges from Juice Shop first (we'll need this either way)
         juice_shop_url = instance['url']
         
         response = requests.get(f"{juice_shop_url}/api/challenges/", 
@@ -359,7 +410,75 @@ def get_user_challenges(user_id, assignment_id=None):
         if response.status_code != 200:
             return {'challenges': [], 'completed': 0, 'total': 0}
         
-        challenges = response.json().get('data', [])
+        all_challenges = response.json().get('data', [])
+        
+        # If assignment_id is provided, get only assigned challenges
+        if assignment_id:
+            # Get assigned challenges from database
+            assigned_challenges = get_assigned_challenges(assignment_id)
+            
+            if assigned_challenges:
+                # We have assigned challenges, use those
+                challenges = []
+                for assigned in assigned_challenges:
+                    for challenge in all_challenges:
+                        if assigned['challenge_id'] == challenge['id']:
+                            # Merge the info from both sources
+                            challenge_info = {
+                                'id': challenge['id'],
+                                'name': assigned['challenge_name'],
+                                'description': assigned['challenge_description'],
+                                'difficulty': assigned['challenge_difficulty'],
+                                'solved': challenge.get('solved', False)
+                            }
+                            challenges.append(challenge_info)
+                            break
+            else:
+                # No challenges specifically assigned yet
+                # Check if we're in a transition state where the assignment was just created
+                # but challenges haven't been saved to the database yet
+                
+                # Get custom parameters from the launch data
+                conn = sqlite3.connect(app.config['DB_PATH'])
+                conn.row_factory = sqlite3.Row
+                c = conn.cursor()
+                
+                # Get a sample of easier challenges as a fallback
+                # This is just a temporary measure until proper challenges are assigned
+                easier_challenges = []
+                for challenge in all_challenges:
+                    if challenge.get('difficulty', 6) <= 2:  # Only include easy challenges (difficulty 1-2)
+                        easier_challenges.append({
+                            'id': challenge['id'],
+                            'name': challenge['name'],
+                            'description': challenge.get('description', ''),
+                            'difficulty': challenge.get('difficulty', 1),
+                            'solved': challenge.get('solved', False)
+                        })
+                        # Limit to 5 challenges for the fallback set
+                        if len(easier_challenges) >= 5:
+                            break
+                
+                challenges = easier_challenges
+                
+                # Also attempt to save these challenges to the assignment
+                if challenges and assignment_id:
+                    try:
+                        save_assigned_challenges(assignment_id, challenges)
+                        app.logger.info(f"Saved fallback challenges for assignment {assignment_id}")
+                    except Exception as e:
+                        app.logger.error(f"Error saving fallback challenges: {str(e)}")
+        else:
+            # No assignment_id, get all challenges from Juice Shop (old behavior)
+            challenges = []
+            for challenge in all_challenges:
+                challenges.append({
+                    'id': challenge['id'],
+                    'name': challenge['name'],
+                    'description': challenge.get('description', ''),
+                    'difficulty': challenge.get('difficulty', 1),
+                    'solved': challenge.get('solved', False)
+                })
         
         # Get user's solved challenges
         conn = sqlite3.connect(app.config['DB_PATH'])
@@ -379,14 +498,10 @@ def get_user_challenges(user_id, assignment_id=None):
         
         # Mark solved challenges
         for challenge in challenges:
-            if challenge['id'] in solved_challenges:
-                challenge['completed'] = True
-            else:
-                challenge['completed'] = False
+            # Check both the solved flag from the API and our database
+            challenge['completed'] = challenge.get('solved', False) or challenge['id'] in solved_challenges
         
-        # Filter challenges if needed based on assignment
-        # This would depend on how you want to assign specific challenges to assignments
-        
+        # Count completed challenges
         completed_count = len([c for c in challenges if c.get('completed', False)])
         
         return {
@@ -400,13 +515,16 @@ def get_user_challenges(user_id, assignment_id=None):
         return {'challenges': [], 'completed': 0, 'total': 0}
 
 
-def check_challenge_completion(user_id, assignment_id=None):
+def check_challenge_completion(user_id, assignment_id=None, launch_id=None):
     """Check if user has completed challenges and save to database"""
     try:
+        app.logger.info(f"Checking challenge completion for user {user_id}, assignment {assignment_id}")
+        
         # Get user's instance
         instance = get_user_instance(user_id)
         
         if not instance['exists']:
+            app.logger.warning(f"No instance found for user {user_id}")
             return {'success': False, 'message': 'No running instance found'}
         
         # Fetch challenges from Juice Shop
@@ -421,36 +539,186 @@ def check_challenge_completion(user_id, assignment_id=None):
                                 })
         
         if response.status_code != 200:
+            app.logger.error(f"Failed to fetch challenges from Juice Shop: {response.status_code}")
             return {'success': False, 'message': 'Failed to fetch challenges'}
         
-        challenges = response.json().get('data', [])
+        all_challenges = response.json().get('data', [])
+        app.logger.info(f"Retrieved {len(all_challenges)} challenges from Juice Shop")
         
-        # Get solved challenges
-        solved_challenges = [c for c in challenges if c.get('solved', False)]
+        # Get solved challenges from Juice Shop
+        solved_challenges_from_api = [c for c in all_challenges if c.get('solved', False)]
+        app.logger.info(f"Found {len(solved_challenges_from_api)} solved challenges from Juice Shop API")
         
-        # Save to database
+        # If assignment_id is provided, filter for only assigned challenges
+        if assignment_id:
+            # Get assigned challenges from database
+            assigned_challenges = get_assigned_challenges(assignment_id)
+            assigned_ids = [c['challenge_id'] for c in assigned_challenges]
+            app.logger.info(f"Assignment {assignment_id} has {len(assigned_ids)} assigned challenges")
+            
+            # Filter solved challenges to only include assigned ones
+            solved_challenges = [c for c in solved_challenges_from_api if c['id'] in assigned_ids]
+            app.logger.info(f"Found {len(solved_challenges)} solved challenges that are part of this assignment")
+        else:
+            solved_challenges = solved_challenges_from_api
+        
+        # Get solved challenges already in database
         conn = sqlite3.connect(app.config['DB_PATH'])
+        conn.row_factory = sqlite3.Row
         c = conn.cursor()
         
+        query = "SELECT challenge_id FROM solved_challenges WHERE user_id=?"
+        params = [user_id]
+        
+        if assignment_id:
+            query += " AND assignment_id=?"
+            params.append(assignment_id)
+        
+        c.execute(query, params)
+        solved_in_db = [row['challenge_id'] for row in c.fetchall()]
+        app.logger.info(f"Found {len(solved_in_db)} challenges already marked as solved in database")
+        
+        # Save new solved challenges to database
+        new_solved_count = 0
         for challenge in solved_challenges:
-            try:
-                c.execute("""
-                    INSERT OR IGNORE INTO solved_challenges 
-                    (user_id, challenge_id, assignment_id, solved_at)
-                    VALUES (?, ?, ?, ?)
-                """, (user_id, challenge['id'], assignment_id, datetime.now().isoformat()))
-            except Exception as e:
-                app.logger.error(f"Error saving solved challenge: {str(e)}")
+            if challenge['id'] not in solved_in_db:
+                try:
+                    app.logger.info(f"Saving new solved challenge {challenge['id']} for user {user_id}")
+                    c.execute("""
+                        INSERT OR IGNORE INTO solved_challenges 
+                        (user_id, challenge_id, assignment_id, solved_at)
+                        VALUES (?, ?, ?, ?)
+                    """, (user_id, challenge['id'], assignment_id, datetime.now().isoformat()))
+                    new_solved_count += 1
+                except Exception as e:
+                    app.logger.error(f"Error saving solved challenge: {str(e)}")
         
         conn.commit()
-        conn.close()
+        app.logger.info(f"Saved {new_solved_count} new solved challenges to database")
         
         # Get updated challenge status
-        return get_user_challenges(user_id, assignment_id)
+        result = get_user_challenges(user_id, assignment_id)
+        app.logger.info(f"Final result: {result['completed']}/{result['total']} challenges completed")
+        
+        # Submit score directly if we have a launch_id
+        # Use the raw number of completed challenges as the score (1 point per challenge)
+        if launch_id and result['completed'] > 0:
+            try:
+                # Get the LTI launch to access the grading service
+                tool_conf = ToolConfJsonFile(get_lti_config_path())
+                launch_data_storage = get_launch_data_storage()
+                
+                # Create a mock Flask request
+                mock_request = FlaskRequest(request_is_secure=request.is_secure)
+                
+                message_launch = ExtendedFlaskMessageLaunch.from_cache(launch_id, mock_request, tool_conf,
+                                                                    launch_data_storage=launch_data_storage)
+                
+                if message_launch.has_ags():
+                    # Submit the raw number of completed challenges (1 point per challenge)
+                    raw_score = result['completed']  # One point per completed challenge
+                    app.logger.info(f"Submitting raw score: {raw_score} points")
+                    
+                    # Get user ID from launch data
+                    sub = message_launch.get_launch_data().get('sub')
+                    timestamp = datetime.now().isoformat() + 'Z'
+                    
+                    # Get grades service
+                    grades = message_launch.get_ags()
+                    
+                    # Create a Grade object
+                    sc = Grade()
+                    sc.set_score_given(raw_score) \
+                        .set_score_maximum(result['total']) \
+                        .set_timestamp(timestamp) \
+                        .set_activity_progress('Completed') \
+                        .set_grading_progress('FullyGraded') \
+                        .set_user_id(sub)
+                    
+                    # Submit grade
+                    grade_result = grades.put_grade(sc)
+                    app.logger.info(f"Score submission result: {grade_result}")
+                else:
+                    app.logger.warning("LTI launch doesn't have Assignment and Grade Service")
+            except Exception as e:
+                app.logger.error(f"Error submitting score from server: {str(e)}")
+        
+        conn.close()
+        return result
     
     except Exception as e:
         app.logger.error(f"Error checking challenge completion: {str(e)}")
-        return {'success': False, 'message': str(e)}
+        return {'success': False, 'message': str(e), 'challenges': [], 'completed': 0, 'total': 0}
+
+
+def save_assigned_challenges(assignment_id, challenges):
+    """Save challenges assigned to an assignment"""
+    conn = sqlite3.connect(app.config['DB_PATH'])
+    c = conn.cursor()
+    
+    # Clear existing assignments
+    c.execute("DELETE FROM assignment_challenges WHERE assignment_id = ?", (assignment_id,))
+    
+    # Insert new assignments
+    for challenge in challenges:
+        c.execute("""
+            INSERT INTO assignment_challenges
+            (assignment_id, challenge_id, challenge_name, challenge_description, challenge_difficulty)
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            assignment_id,
+            challenge['id'],
+            challenge.get('name', ''),
+            challenge.get('description', ''),
+            challenge.get('difficulty', 0)
+        ))
+    
+    conn.commit()
+    conn.close()
+    
+    return True
+
+
+# Cleanup all running containers when the app exits
+def cleanup_all_containers():
+    """Stop all running containers created by this application"""
+    app.logger.info("Cleaning up all Docker containers...")
+    
+    try:
+        # First, try to use the database to find all running containers
+        conn = sqlite3.connect(app.config['DB_PATH'])
+        c = conn.cursor()
+        
+        c.execute("SELECT container_id FROM instances WHERE status='running'")
+        containers = [row[0] for row in c.fetchall()]
+        
+        conn.close()
+        
+        # Also include any containers tracked in memory
+        global running_containers
+        for container_id in running_containers + containers:
+            if container_id:
+                try:
+                    app.logger.info(f"Stopping container {container_id}")
+                    subprocess.run(["docker", "stop", container_id], capture_output=True, text=True)
+                except Exception as e:
+                    app.logger.error(f"Error stopping container {container_id}: {str(e)}")
+    
+    except Exception as e:
+        app.logger.error(f"Error during container cleanup: {str(e)}")
+
+
+# Register signal handlers to cleanup containers on exit
+def signal_handler(sig, frame):
+    """Handle exit signals to cleanup resources"""
+    app.logger.info(f"Received signal {sig}, cleaning up...")
+    cleanup_all_containers()
+    sys.exit(0)
+
+
+# Register signal handlers
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 
 # Start a background thread to clean up expired instances
@@ -463,6 +731,7 @@ def cleanup_thread():
         
         # Sleep for 1 hour
         time.sleep(3600)
+
 
 # Start the cleanup thread
 cleanup_thread = threading.Thread(target=cleanup_thread, daemon=True)
@@ -491,6 +760,62 @@ def login():
 def get_jwks():
     tool_conf = ToolConfJsonFile(get_lti_config_path())
     return tool_conf.get_jwks()["keys"][0]
+
+
+@app.route('/configure/<launch_id>/', methods=['POST'])
+def save_configuration(launch_id):
+    """Save selected challenges for an assignment"""
+    tool_conf = ToolConfJsonFile(get_lti_config_path())
+    flask_request = FlaskRequest()
+    launch_data_storage = get_launch_data_storage()
+    message_launch = ExtendedFlaskMessageLaunch.from_cache(launch_id, flask_request, tool_conf,
+                                                        launch_data_storage=launch_data_storage)
+    
+    if not message_launch.is_deep_link_launch():
+        return jsonify({'error': 'Not a deep link launch'}), 400
+    
+    # Get selected challenges from request
+    data = request.json
+    selected_challenges = data.get('challenges', [])
+    
+    if not selected_challenges:
+        return jsonify({'error': 'No challenges selected'}), 400
+    
+    # During deep linking, we don't have an assignment ID yet
+    # So we'll pass the selected challenge IDs as custom parameters in the deep link
+    
+    # Create a DeepLinkResource to return to the platform
+    launch_url = f"{request.url_root}assignment"
+    
+    # Extract just the IDs and essential info for the custom parameters
+    # to avoid exceeding parameter size limits
+    challenge_params = []
+    for challenge in selected_challenges:
+        challenge_params.append({
+            'id': challenge['id'],
+            'name': challenge['name'],
+            'difficulty': challenge['difficulty']
+        })
+    
+    # Get the return URL from launch data
+    launch_data = message_launch.get_launch_data()
+    return_url = launch_data.get('https://purl.imsglobal.org/spec/lti-dl/claim/deep_linking_settings', {}).get('deep_link_return_url')
+    
+    if not return_url:
+        app.logger.error("Deep link return URL not found in launch data")
+        return jsonify({'error': 'Return URL not found in launch data'}), 400
+    
+    resource = DeepLinkResource()
+    resource.set_url(launch_url) \
+        .set_custom_params({'selected_challenges': json.dumps(challenge_params)}) \
+        .set_title('Security Challenges Assignment')
+    
+    # Return as JSON for frontend to submit
+    return jsonify({
+        'success': True,
+        'deep_link_jwt': message_launch.get_deep_link().get_response_jwt([resource]),
+        'return_url': return_url
+    })
 
 
 @app.route('/configure/<launch_id>/<int:challenge_id>/', methods=['GET', 'POST'])
@@ -640,9 +965,13 @@ def assignment_page():
     launch_data_storage = get_launch_data_storage()
     message_launch = ExtendedFlaskMessageLaunch(flask_request, tool_conf, launch_data_storage=launch_data_storage)
     message_launch_data = message_launch.get_launch_data()
-    pprint.pprint(message_launch_data)
+    
+    # Log launch data for debugging
+    app.logger.info("LTI Launch data received:")
+    app.logger.info(pprint.pformat(message_launch_data))
 
     if message_launch.is_deep_link_launch():
+        app.logger.info("Processing deep link launch")
         # Fetch challenges for deep linking
         challenges = get_juice_shop_challenges()
         
@@ -654,6 +983,10 @@ def assignment_page():
                 challenge_categories[category] = []
             challenge_categories[category].append(challenge)
 
+        # Log deep linking settings
+        deep_link_settings = message_launch_data.get('https://purl.imsglobal.org/spec/lti-dl/claim/deep_linking_settings', {})
+        app.logger.info("Deep linking settings: %s", deep_link_settings)
+        
         tpl_kwargs = {
             'page_title': PAGE_TITLE,
             'is_deep_link_launch': True,
@@ -664,10 +997,55 @@ def assignment_page():
         }
         return render_template('game.html', **tpl_kwargs)
     else:
+        app.logger.info("Processing regular assignment launch")
         # Regular launch - direct to assignment page
         # Extract user_id from launch data
         user_id = message_launch_data.get('sub')
         assignment_id = message_launch_data.get('https://purl.imsglobal.org/spec/lti/claim/resource_link', {}).get('id')
+        
+        app.logger.info(f"Assignment launch for user {user_id}, assignment {assignment_id}")
+        
+        # Check for selected challenges in custom parameters
+        custom_params = message_launch_data.get('https://purl.imsglobal.org/spec/lti/claim/custom', {})
+        app.logger.info(f"Custom parameters: {custom_params}")
+        
+        selected_challenges_json = custom_params.get('selected_challenges')
+        
+        # If we have selected challenges from deep linking and a valid assignment ID,
+        # store them in the database
+        if selected_challenges_json and assignment_id:
+            app.logger.info(f"Found selected challenges in custom parameters for assignment {assignment_id}")
+            try:
+                # Parse the JSON string
+                selected_challenges = json.loads(selected_challenges_json)
+                app.logger.info(f"Parsed {len(selected_challenges)} selected challenges")
+                
+                # Get full challenge details from Juice Shop
+                all_challenges = get_juice_shop_challenges()
+                
+                # Prepare challenges with full details for saving
+                challenges_to_save = []
+                for selected in selected_challenges:
+                    for challenge in all_challenges:
+                        if selected['id'] == challenge['id']:
+                            # Create a complete challenge object
+                            challenge_info = {
+                                'id': challenge['id'],
+                                'name': selected['name'],
+                                'description': challenge.get('description', ''),
+                                'difficulty': selected['difficulty']
+                            }
+                            challenges_to_save.append(challenge_info)
+                            break
+                
+                # Save to database
+                if challenges_to_save:
+                    app.logger.info(f"Saving {len(challenges_to_save)} challenges to assignment {assignment_id}")
+                    save_assigned_challenges(assignment_id, challenges_to_save)
+                else:
+                    app.logger.warning("No challenges found to save")
+            except Exception as e:
+                app.logger.error(f"Error processing challenge parameters: {str(e)}")
         
         tpl_kwargs = {
             'page_title': PAGE_TITLE,
@@ -676,6 +1054,7 @@ def assignment_page():
             'assignment_id': assignment_id,
         }
         return render_template('assignment.html', **tpl_kwargs)
+
 
 @app.route('/api/challenge-list/<launch_id>/<assignment_id>', methods=['GET'])
 def challenge_list(launch_id, assignment_id):
@@ -720,7 +1099,7 @@ def challenge_status(launch_id, user_id, assignment_id):
             return jsonify({'error': 'Unauthorized access'}), 403
         
         # Check challenge completion
-        challenges_data = check_challenge_completion(user_id, assignment_id)
+        challenges_data = check_challenge_completion(user_id, assignment_id, launch_id)
         
         return jsonify({
             'challenges': challenges_data['challenges'], 
@@ -735,35 +1114,48 @@ def challenge_status(launch_id, user_id, assignment_id):
 
 @app.route('/api/score/<launch_id>/<earned_score>/', methods=['POST'])
 def score(launch_id, earned_score):
-    tool_conf = ToolConfJsonFile(get_lti_config_path())
-    flask_request = FlaskRequest()
-    launch_data_storage = get_launch_data_storage()
-    message_launch = ExtendedFlaskMessageLaunch.from_cache(launch_id, flask_request, tool_conf,
-                                                        launch_data_storage=launch_data_storage)
+    """Submit score back to LMS"""
+    try:
+        app.logger.info(f"Score submission request: launch_id={launch_id}, score={earned_score}")
+        
+        tool_conf = ToolConfJsonFile(get_lti_config_path())
+        flask_request = FlaskRequest()
+        launch_data_storage = get_launch_data_storage()
+        message_launch = ExtendedFlaskMessageLaunch.from_cache(launch_id, flask_request, tool_conf,
+                                                            launch_data_storage=launch_data_storage)
 
-    if not message_launch.has_ags():
-        raise Forbidden("Don't have grades!")
+        if not message_launch.has_ags():
+            app.logger.error("LTI launch doesn't have Assignment and Grade Service")
+            return jsonify({'success': False, 'error': "Don't have grades service!"}), 403
 
-    sub = message_launch.get_launch_data().get('sub')
-    timestamp = datetime.datetime.now().isoformat() + 'Z'
-    earned_score = int(earned_score)
+        sub = message_launch.get_launch_data().get('sub')
+        timestamp = datetime.now().isoformat() + 'Z'
+        earned_score = int(earned_score)
+        
+        app.logger.info(f"Submitting score {earned_score} for user {sub}")
 
-    grades = message_launch.get_ags()
+        grades = message_launch.get_ags()
+        
+        # Create a Grade object
+        sc = Grade()
+        sc.set_score_given(earned_score) \
+            .set_score_maximum(100) \
+            .set_timestamp(timestamp) \
+            .set_activity_progress('Completed') \
+            .set_grading_progress('FullyGraded') \
+            .set_user_id(sub)
+        
+        # Use the default line item (don't create a new one)
+        # This will post the grade back to the original assignment
+        result = grades.put_grade(sc)
+        
+        app.logger.info(f"Score submission result: {result}")
+
+        return jsonify({'success': True, 'result': result.get('body')})
     
-    # Create a Grade object
-    sc = Grade()
-    sc.set_score_given(earned_score) \
-        .set_score_maximum(100) \
-        .set_timestamp(timestamp) \
-        .set_activity_progress('Completed') \
-        .set_grading_progress('FullyGraded') \
-        .set_user_id(sub)
-    
-    # Use the default line item (don't create a new one)
-    # This will post the grade back to the original assignment
-    result = grades.put_grade(sc)
-
-    return jsonify({'success': True, 'result': result.get('body')})
+    except Exception as e:
+        app.logger.error(f"Error submitting score: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 
 @app.route('/api/check-challenge-status/<launch_id>/<int:challenge_id>/', methods=['GET'])
@@ -785,43 +1177,6 @@ def check_challenge_status(launch_id, challenge_id):
         return jsonify({'error': 'Challenge not found'}), 404
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/scoreboard/<launch_id>/', methods=['GET', 'POST'])
-def scoreboard(launch_id):
-    tool_conf = ToolConfJsonFile(get_lti_config_path())
-    flask_request = FlaskRequest()
-    launch_data_storage = get_launch_data_storage()
-    message_launch = ExtendedFlaskMessageLaunch.from_cache(launch_id, flask_request, tool_conf,
-                                                        launch_data_storage=launch_data_storage)
-
-    if not message_launch.has_nrps():
-        raise Forbidden("Don't have names and roles!")
-
-    if not message_launch.has_ags():
-        raise Forbidden("Don't have grades!")
-
-    ags = message_launch.get_ags()
-    
-    # Get grades from the default line item
-    scores = ags.get_grades()
-    
-    members = message_launch.get_nrps().get_members()
-    scoreboard_result = []
-
-    for sc in scores:
-        result = {
-            'score': sc['resultScore']
-        }
-        
-        for member in members:
-            if member['user_id'] == sc['userId']:
-                result['name'] = member.get('name', 'Unknown')
-                break
-        
-        scoreboard_result.append(result)
-
-    return jsonify(scoreboard_result)
 
 
 if __name__ == '__main__':
