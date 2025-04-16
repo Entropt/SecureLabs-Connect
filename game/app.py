@@ -785,7 +785,7 @@ def save_configuration(launch_id):
     # So we'll pass the selected challenge IDs as custom parameters in the deep link
     
     # Create a DeepLinkResource to return to the platform
-    launch_url = f"{request.url_root}assignment"
+    launch_url = f"{request.url_root}assignment/"
     
     # Extract just the IDs and essential info for the custom parameters
     # to avoid exceeding parameter size limits
