@@ -33,6 +33,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Challenge data storage
     let challengesData = [];
     
+    // Instance status
+    let instanceIsReady = false;
+    
     // Event listeners
     if (continueBtn) {
         continueBtn.addEventListener('click', continueToInstance);
@@ -68,7 +71,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Initial actions
     checkInstanceStatus();
-    loadChallenges();
     
     // Set up periodic refresh - shorter interval for more responsive updates
     setInterval(checkInstanceStatus, 30000); // Check every 30 seconds
@@ -135,14 +137,30 @@ document.addEventListener('DOMContentLoaded', function() {
                     instanceCreated.textContent = created.toLocaleString();
                     
                     showSection(instanceExistsSection);
+                    
+                    // Set instance status to ready
+                    const wasReady = instanceIsReady;
+                    instanceIsReady = true;
+                    
+                    // Load challenges if instance just became ready
+                    if (!wasReady) {
+                        console.log("Instance is now ready, loading challenges...");
+                        loadChallenges();
+                    }
                 } else {
+                    instanceIsReady = false;
                     showSection(noInstanceSection);
+                    
+                    // Clear challenge list if no instance is available
+                    challengeList.innerHTML = '<div class="loading-challenges">No instance available. Create one to see challenges.</div>';
+                    updateProgress(0, 0);
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
                 errorText.textContent = error.message || 'Failed to check instance status';
                 showSection(errorMessageSection);
+                instanceIsReady = false;
             });
     }
     
@@ -178,8 +196,18 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .then(data => {
                 if (data.success) {
+                    // Indicate instance is not ready until confirmed
+                    instanceIsReady = false;
+                    
+                    // Clear challenge list during restart
+                    challengeList.innerHTML = '<div class="loading-challenges">Restarting instance and loading challenges...</div>';
+                    
                     // Set a timeout to check status after restart
-                    setTimeout(checkInstanceStatus, 5000);
+                    setTimeout(() => {
+                        checkInstanceStatus();
+                        // Also explicitly load challenges after the instance is restarted
+                        setTimeout(loadChallenges, 5000);
+                    }, 5000);
                 } else {
                     errorText.textContent = data.message || 'Failed to restart instance';
                     showSection(errorMessageSection);
@@ -195,6 +223,9 @@ document.addEventListener('DOMContentLoaded', function() {
     function createNewInstance() {
         showSection(creatingInstanceSection);
         
+        // Clear challenge list during creation
+        challengeList.innerHTML = '<div class="loading-challenges">Creating instance and loading challenges...</div>';
+        
         fetch(`/api/create-instance/${launchId}/${userId}`, {
             method: 'POST'
         })
@@ -206,6 +237,9 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .then(data => {
                 if (data.success) {
+                    // Indicate instance is not ready until confirmed
+                    instanceIsReady = false;
+                    
                     // Poll for instance status
                     pollInstanceCreation();
                 } else {
@@ -229,6 +263,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     if (data.exists && data.status === 'running') {
                         clearInterval(pollInterval);
                         checkInstanceStatus();
+                        
+                        // Explicitly load challenges once the instance is ready
+                        console.log("Instance creation confirmed, loading challenges...");
+                        setTimeout(loadChallenges, 2000);
                     }
                 })
                 .catch(error => {
@@ -245,6 +283,18 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function loadChallenges() {
+        console.log("Loading challenges for assignment:", assignmentId);
+        
+        // Skip loading if no instance is ready yet
+        if (!instanceIsReady) {
+            console.log("Instance not ready, skipping challenge load.");
+            challengeList.innerHTML = '<div class="loading-challenges">Waiting for instance to be ready...</div>';
+            return;
+        }
+        
+        // Update UI to show loading state
+        challengeList.innerHTML = '<div class="loading-challenges">Loading challenges...</div>';
+        
         fetch(`/api/challenge-list/${launchId}/${assignmentId}`)
             .then(response => {
                 if (!response.ok) {
@@ -253,6 +303,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 return response.json();
             })
             .then(data => {
+                console.log("Challenges loaded:", data);
+                
                 // Store challenges data for reference
                 challengesData = data.challenges;
                 
@@ -261,6 +313,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Clear the challenge list
                 challengeList.innerHTML = '';
+                
+                if (data.challenges.length === 0) {
+                    challengeList.innerHTML = '<div class="loading-challenges">No challenges found for this assignment</div>';
+                    return;
+                }
                 
                 // Add each challenge to the list
                 data.challenges.forEach(challenge => {
@@ -306,7 +363,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 updateProgress(data.completed, data.challenges.length);
             })
             .catch(error => {
-                console.error('Error:', error);
+                console.error('Error loading challenges:', error);
                 challengeList.innerHTML = `<div class="error">Failed to load challenges: ${error.message}</div>`;
             });
     }
@@ -382,6 +439,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function updateChallengeStatus() {
+        // Skip update if no instance is available
+        if (!instanceIsReady) {
+            return;
+        }
+        
         console.log('Checking challenge status...');
         
         // Debug info for troubleshooting
@@ -399,6 +461,15 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .then(data => {
                 console.log('Challenge status data:', data);
+                
+                // If this is the first time we're getting challenge data and the list is empty, populate it
+                if (data.challenges && data.challenges.length > 0 && 
+                    (challengesData.length === 0 || challengeList.querySelector('.loading-challenges'))) {
+                    console.log("Initial challenge data received, populating list...");
+                    challengesData = data.challenges;
+                    loadChallenges();
+                    return;
+                }
                 
                 // Update challenges data
                 challengesData = data.challenges;
@@ -430,8 +501,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         }
                     }
                 });
-                
-                // Note: Score submission is now handled by the server directly
             })
             .catch(error => {
                 console.error('Error updating challenge status:', error);
@@ -443,6 +512,9 @@ document.addEventListener('DOMContentLoaded', function() {
             const percentage = (completed / total) * 100;
             progressFill.style.width = `${percentage}%`;
             completedChallenges.textContent = completed;
+        } else {
+            progressFill.style.width = '0%';
+            completedChallenges.textContent = '0';
         }
     }
 });
