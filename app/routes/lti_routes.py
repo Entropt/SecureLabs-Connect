@@ -157,7 +157,7 @@ def assignment_page():
             'challenges': challenges,
             'challenge_categories': challenge_categories
         }
-        return render_template('game.html', **tpl_kwargs)
+        return render_template('app.html', **tpl_kwargs)
     else:
         current_app.logger.info("Processing regular assignment launch")
         # Regular launch - direct to assignment page

@@ -8,7 +8,7 @@ The code has been refactored to improve organization and maintainability while p
 The application is now organized using a modular structure with clear separation of concerns:
 
 ```
-game/
+app/
 ├── app.py                  # Main application entry point
 ├── config.py               # Configuration settings
 ├── models/                 # Database and data models
@@ -31,7 +31,7 @@ game/
 │   └── helpers.py          # Helper functions and middleware
 ├── templates/              # HTML templates
 │   ├── assignment.html
-│   └── game.html
+│   └── app.html
 └── static/                 # Static files
     ├── assignment.js
     └── style.css
@@ -63,7 +63,7 @@ game/
 
 ## Setup and Installation
 
-1. Configure configs/game.json file with your LTI settings
+1. Configure configs/app.json file with your LTI settings
    ```json
    {
        "https://canvas.instructure.com" : [{
@@ -90,17 +90,26 @@ game/
 
 3. Run the application
    ```bash
-   cd game
+   cd app
    python app.py
    ```
 
-4. Configure your LTI tool in Canvas LMS with:
+4. Set up local Juice Shop instance in port 3000
+   ```bash
+   docker run --rm -e "NODE_ENV=unsafe" -p 127.0.0.1:3000:3000 bkimminich/juice-shop
+   ```
+
+5. Configure your LTI tool in Canvas LMS with:
    ```
    OIDC Login URL: http://<ip_address>:9001/login/
    LTI Launch URL: http://<ip_address>:9001/assignment/
    JWKS URL: http://<ip_address>:9001/jwks/
    ```
 **Note:** In case the error pop up in score phase, change JWKS to manually input and copy jwk in above URL to LTI Key.
+
+6. Change necessary settings in `app.json`after deploy the app's information in a specific course
+
+Read more [here](https://github.com/dmitry-viskov/pylti1.3/wiki/Configure-Canvas-as-LTI-1.3-Platform)
 
 ### Docker Management
 

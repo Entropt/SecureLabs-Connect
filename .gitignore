@@ -5,6 +5,6 @@
 .vscode
 
 # Databases created
-game/juice_shop_instances.db
+app/juice_shop_instances.db
 
 *__pycache__

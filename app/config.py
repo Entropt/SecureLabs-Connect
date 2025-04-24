@@ -27,4 +27,4 @@ PAGE_TITLE = 'Security Challenges'
 
 def get_lti_config_path():
     """Get the path to the LTI config file"""
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'configs', 'game.json')
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'configs', 'app.json')
