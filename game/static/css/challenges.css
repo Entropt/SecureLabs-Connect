@@ -1,0 +1,182 @@
+/* 
+ * Challenges CSS - Styles for challenge lists, items, and related components
+ */
+
+ .challenge-list {
+    margin-top: 15px;
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+}
+
+.challenge-item {
+    padding: 12px 15px;
+    border-bottom: 1px solid #e0e0e0;
+    display: flex;
+    align-items: center;
+    transition: background-color 0.2s;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+}
+
+.challenge-item:last-child {
+    border-bottom: none;
+}
+
+.challenge-item:hover {
+    background-color: #f9f9f9;
+    transform: translateY(-2px);
+}
+
+.challenge-status {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    margin-right: 15px;
+    flex-shrink: 0;
+}
+
+.challenge-status.completed {
+    background-color: #4caf50;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.challenge-status.incomplete {
+    border: 2px solid #e0e0e0;
+}
+
+.challenge-info {
+    flex-grow: 1;
+    position: relative;
+}
+
+.challenge-name {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #333;
+}
+
+.challenge-description {
+    font-size: 14px;
+    color: #666;
+    margin-bottom: 15px;
+    flex-grow: 1;
+    overflow: auto; /* Allow scrolling if needed */
+    word-wrap: break-word; /* Ensure long words wrap */
+    max-height: 120px; /* Set a max height with scrolling */
+}
+
+.challenge-meta {
+    font-size: 12px;
+    color: #888;
+    display: flex;
+    justify-content: space-between;
+    border-top: 1px solid #eee;
+    padding-top: 10px;
+    margin-top: auto;
+    width: 100%;
+}
+
+.challenge-difficulty {
+    font-size: 12px;
+    color: #5f6368;
+}
+
+.difficulty {
+    display: inline-block;
+}
+
+.difficulty-stars {
+    color: #f8d64e;
+    font-size: 18px; /* Increased from default size */
+    letter-spacing: 2px; /* Added spacing between stars */
+}
+
+.challenge-action {
+    margin-top: 5px;
+    font-size: 13px;
+    color: #4285f4;
+    text-decoration: underline;
+}
+
+.view-details-btn {
+    cursor: pointer;
+}
+
+.view-details-btn:hover {
+    color: #3367d6;
+}
+
+.loading-challenges {
+    padding: 20px;
+    text-align: center;
+    color: #5f6368;
+}
+
+/* Progress Bar */
+.progress-container {
+    margin: 20px 0;
+}
+
+.progress-bar {
+    height: 12px;
+    background-color: #f1f3f4;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background-color: #4285f4;
+    border-radius: 6px;
+    transition: width 0.5s ease-in-out;
+}
+
+.progress-stats {
+    margin-top: 5px;
+    font-size: 14px;
+    color: #5f6368;
+    text-align: right;
+}
+
+/* Challenge Detail Card */
+.challenge-detail-card {
+    background-color: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 20px;
+    margin-top: 20px;
+}
+
+.detail-content {
+    padding: 15px;
+    background-color: #f9f9f9;
+    border-radius: 6px;
+}
+
+.detail-meta {
+    display: flex;
+    justify-content: space-between;
+    margin: 10px 0 20px;
+    font-size: 14px;
+    color: #5f6368;
+}
+
+.detail-description {
+    background-color: white;
+    padding: 15px;
+    border-radius: 6px;
+    border: 1px solid #e0e0e0;
+    margin-bottom: 20px;
+}
+
+.detail-description h4 {
+    margin-top: 0;
+    color: #3c4043;
+    margin-bottom: 10px;
+}

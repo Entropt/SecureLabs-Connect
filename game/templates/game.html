@@ -4,7 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <title>{{ page_title }}</title>
-    <link href="{{ url_for('static', filename='style.css') }}" rel="stylesheet">
+    <!-- Switched to multiple CSS files for better organization -->
+    <link href="{{ url_for('static', filename='css/main.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/layout.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/components.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/challenges.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/modal.css') }}" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css?family=Roboto&display=swap" rel="stylesheet">
     <script type="text/javascript"> 
         var launchId = "{{ launch_id }}";
@@ -105,6 +110,7 @@
     </div>
 
     <!-- Search and selection functionality script -->
+    <script src="{{ url_for('static', filename='js/utils.js') }}"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
             const searchInput = document.getElementById('searchInput');
