@@ -66,18 +66,22 @@ app/
 1. Configure configs/app.json file with your LTI settings
    ```json
    {
-       "https://canvas.instructure.com" : [{
-           "default": true,
-           "client_id" : "<client_id1>",
-           "auth_login_url" : "<auth_login_url>",
-           "auth_token_url" : "<auth_token_url>",
-           "auth_audience": null,
-           "key_set_url" : "<key_set_url>",
-           "key_set": null,
-           "private_key_file" : "<path_to_private_key>",
-           "public_key_file": "<path_to_public_key>",
-           "deployment_ids" : ["<deployment_id>"]
-       }]
+      "https://canvas.instructure.com" : [{
+         "default": true,
+         "client_id" : "<client_id1>",
+         "auth_login_url" : "<auth_login_url>",
+         "auth_token_url" : "<auth_token_url>",
+         "auth_audience": null,
+         "key_set_url" : "<key_set_url>",
+         "key_set": null,
+         "private_key_file" : "<path_to_private_key>",
+         "public_key_file": "<path_to_public_key>",
+         "deployment_ids" : ["<deployment_id>"]
+      }, {
+         "default": false,
+         "client_id" : "<client_id2>",
+         ...
+      }]
    }
    ```
 
