@@ -134,6 +134,34 @@ def cleanup_expired_instances():
         current_app.logger.error(f"Error cleaning up expired instances: {str(e)}")
         return {'success': False, 'message': str(e)}
 
+def shutdown_user_instance(user_id):
+    """Shutdown a user's Docker instance"""
+    try:
+        # Get user's current instance
+        instance = get_user_instance(user_id)
+        
+        if not instance['exists']:
+            return {'success': False, 'message': 'No running instance found'}
+        
+        # Stop the container
+        container_id = instance['container_id']
+        stop_successful = stop_docker_container(container_id)
+        
+        if not stop_successful:
+            from flask import current_app
+            current_app.logger.error(f"Failed to stop container {container_id}")
+            return {'success': False, 'message': f"Failed to stop container {container_id}"}
+        
+        # Update instance status
+        update_instance_status(instance['id'], 'stopped')
+        
+        return {'success': True, 'message': 'Instance successfully shutdown'}
+    
+    except Exception as e:
+        from flask import current_app
+        current_app.logger.error(f"Error shutting down Docker instance: {str(e)}")
+        return {'success': False, 'message': str(e)}
+
 def cleanup_all_containers():
     """Stop all running containers created by this application"""
     try:

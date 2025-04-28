@@ -24,6 +24,10 @@ class InstanceManager {
             this.uiController.restartBtn.addEventListener('click', () => this.restartInstance());
         }
         
+        if (this.uiController.shutdownBtn) {
+            this.uiController.shutdownBtn.addEventListener('click', () => this.shutdownInstance());
+        }
+        
         if (this.uiController.createBtn) {
             this.uiController.createBtn.addEventListener('click', () => this.createNewInstance());
         }
@@ -148,6 +152,44 @@ class InstanceManager {
         } catch (error) {
             console.error('Error:', error);
             this.uiController.showError(error.message || 'An error occurred while restarting the instance');
+            return null;
+        }
+    }
+    
+    /**
+     * Shutdown the instance
+     * @returns {Promise<Object>} Shutdown result
+     */
+    async shutdownInstance() {
+        this.uiController.showLoading();
+        this.uiController.setChallengeListLoadingMessage('Shutting down instance...');
+        
+        // Set instance as not ready during shutdown
+        this.instanceIsReady = false;
+        this.currentInstanceUrl = null;
+        
+        try {
+            const response = await fetch(`/api/shutdown-instance/${launchId}/${userId}`, {
+                method: 'POST'
+            });
+            
+            if (!response.ok) {
+                throw new Error('Failed to shutdown instance');
+            }
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                // Check status to update UI
+                setTimeout(() => this.checkInstanceStatus(), 2000);
+                return data;
+            } else {
+                this.uiController.showError(data.message || 'Failed to shutdown instance');
+                return null;
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            this.uiController.showError(error.message || 'An error occurred while shutting down the instance');
             return null;
         }
     }

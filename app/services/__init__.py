@@ -1,7 +1,8 @@
 # Import services here for easier access from other modules
 from services.docker_service import (
     create_docker_instance, 
-    restart_docker_instance, 
+    restart_docker_instance,
+    shutdown_user_instance,
     cleanup_expired_instances, 
     cleanup_all_containers
 )

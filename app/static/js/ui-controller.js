@@ -19,6 +19,7 @@ class UIController {
         // Buttons
         this.continueBtn = document.getElementById('continue-btn');
         this.restartBtn = document.getElementById('restart-btn');
+        this.shutdownBtn = document.getElementById('shutdown-btn');
         this.createBtn = document.getElementById('create-btn');
         this.retryBtn = document.getElementById('retry-btn');
         
