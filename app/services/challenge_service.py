@@ -1,4 +1,3 @@
-
 import requests
 from flask import current_app
 from models.instance import get_user_instance
@@ -10,19 +9,30 @@ from models.challenge import (
 )
 
 def get_juice_shop_challenges():
-    """Fetch challenges from Juice Shop API"""
+    """Fetch challenges from the master Juice Shop API"""
     juice_shop_url = "http://127.0.0.1:3000"
     
-    response = requests.get(f"{juice_shop_url}/api/challenges/", 
+    try:
+        current_app.logger.info("Fetching challenges from master Juice Shop instance")
+        response = requests.get(f"{juice_shop_url}/api/challenges/", 
                         headers={
                             'Accept-Language': 'en-GB,en;q=0.9',
                             'Accept': 'application/json, text/plain, */*',
                             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
                             'Connection': 'keep-alive'
-                        })
-    if response.status_code == 200:
-        return response.json().get('data', [])
-    return []
+                        },
+                        timeout=10)  # Add a timeout to prevent hanging
+        
+        if response.status_code == 200:
+            challenges = response.json().get('data', [])
+            current_app.logger.info(f"Successfully fetched {len(challenges)} challenges from master Juice Shop")
+            return challenges
+        else:
+            current_app.logger.error(f"Failed to fetch challenges from master Juice Shop: HTTP {response.status_code}")
+            return []
+    except Exception as e:
+        current_app.logger.error(f"Error fetching challenges from master Juice Shop: {str(e)}")
+        return []
 
 def get_challenges_from_instance(instance_url):
     """Fetch challenges from a specific Juice Shop instance"""

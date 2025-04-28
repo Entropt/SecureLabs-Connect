@@ -4,6 +4,8 @@ from models.instance import find_available_port, save_instance, update_instance_
 
 # Global list to track running containers in memory
 running_containers = []
+# Global variable to track the master Juice Shop container for challenges
+master_juice_shop_container = None
 
 def create_docker_instance(user_id, assignment_id=None):
     """Create a new Juice Shop Docker instance for the user"""
@@ -162,6 +164,113 @@ def shutdown_user_instance(user_id):
         current_app.logger.error(f"Error shutting down Docker instance: {str(e)}")
         return {'success': False, 'message': str(e)}
 
+def start_master_juice_shop():
+    """
+    Start a master Juice Shop instance on port 3000 for challenge fetching
+    """
+    try:
+        from flask import current_app
+        current_app.logger.info("Starting master Juice Shop instance for challenges...")
+        
+        # Check if master container is already running
+        global master_juice_shop_container
+        
+        # First, check if there's an orphaned container with our name from a previous run
+        container_name = "juice_shop_master_challenges"
+        check_cmd = ["docker", "ps", "-a", "--filter", f"name={container_name}", "--format", "{{.ID}}"]
+        result = subprocess.run(check_cmd, capture_output=True, text=True)
+        
+        if result.returncode == 0 and result.stdout.strip():
+            # Found an existing container with this name, remove it first
+            existing_container_id = result.stdout.strip()
+            current_app.logger.info(f"Found existing master Juice Shop container: {existing_container_id}. Removing it...")
+            
+            # Stop the container if it's running
+            stop_cmd = ["docker", "stop", existing_container_id]
+            subprocess.run(stop_cmd, capture_output=True, text=True)
+            
+            # Remove the container
+            rm_cmd = ["docker", "rm", "-f", existing_container_id]
+            rm_result = subprocess.run(rm_cmd, capture_output=True, text=True)
+            
+            if rm_result.returncode != 0:
+                error_msg = f"Failed to remove existing container: {rm_result.stderr}"
+                current_app.logger.error(error_msg)
+        
+        # Check if we already have a tracked container
+        if master_juice_shop_container:
+            current_app.logger.info(f"Master Juice Shop already running with container ID: {master_juice_shop_container}")
+            return {'success': True, 'container_id': master_juice_shop_container}
+
+        # Run the docker command
+        cmd = [
+            "docker", "run", 
+            "--rm",  # Ensure container is removed when stopped
+            "-d",
+            "--name", container_name,
+            "-e", "NODE_ENV=unsafe",
+            "-p", "127.0.0.1:3000:3000",  # Bind to localhost only
+            "--label", "managed-by=lti-juice-shop-master",  # Special label for the master instance
+            "bkimminich/juice-shop"
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            error_msg = f"Failed to create master Juice Shop container: {result.stderr}"
+            current_app.logger.error(error_msg)
+            raise Exception(error_msg)
+        
+        container_id = result.stdout.strip()
+        master_juice_shop_container = container_id
+        
+        # Keep track of running containers
+        global running_containers
+        running_containers.append(container_id)
+        
+        current_app.logger.info(f"Master Juice Shop started with container ID: {container_id}")
+        return {'success': True, 'container_id': container_id}
+    
+    except Exception as e:
+        from flask import current_app
+        current_app.logger.error(f"Error starting master Juice Shop: {str(e)}")
+        return {'success': False, 'message': str(e)}
+
+def stop_master_juice_shop():
+    """
+    Stop the master Juice Shop instance used for challenge fetching
+    """
+    try:
+        from flask import current_app
+        global master_juice_shop_container
+        
+        if not master_juice_shop_container:
+            current_app.logger.info("No master Juice Shop running, nothing to stop")
+            return {'success': True, 'message': 'No master instance running'}
+        
+        current_app.logger.info(f"Stopping master Juice Shop container {master_juice_shop_container}")
+        
+        stop_cmd = ["docker", "stop", master_juice_shop_container]
+        result = subprocess.run(stop_cmd, capture_output=True, text=True)
+        
+        global running_containers
+        if master_juice_shop_container in running_containers:
+            running_containers.remove(master_juice_shop_container)
+        
+        master_juice_shop_container = None
+        
+        if result.returncode != 0:
+            error_msg = f"Failed to stop master Juice Shop container: {result.stderr}"
+            current_app.logger.error(error_msg)
+            return {'success': False, 'message': error_msg}
+        
+        return {'success': True, 'message': 'Master Juice Shop stopped successfully'}
+    
+    except Exception as e:
+        from flask import current_app
+        current_app.logger.error(f"Error stopping master Juice Shop: {str(e)}")
+        return {'success': False, 'message': str(e)}
+
 def cleanup_all_containers():
     """Stop all running containers created by this application"""
     try:
@@ -169,6 +278,9 @@ def cleanup_all_containers():
         from models.database import get_db_connection
         
         current_app.logger.info("Cleaning up all Docker containers...")
+        
+        # First stop the master Juice Shop if it's running
+        stop_master_juice_shop()
         
         # Get all running containers from database
         conn = get_db_connection()
@@ -196,18 +308,20 @@ def cleanup_all_containers():
                 except Exception as e:
                     current_app.logger.error(f"Error stopping container {container_id}: {str(e)}")
         
-        # As a backup, try to find and remove any containers with our label that might have been missed
+        # As a backup, try to find and remove any containers with our labels that might have been missed
         try:
             current_app.logger.info("Checking for any labeled containers that might have been missed...")
-            list_cmd = ["docker", "ps", "-q", "--filter", "label=managed-by=lti-juice-shop"]
-            result = subprocess.run(list_cmd, capture_output=True, text=True)
-            
-            if result.returncode == 0 and result.stdout.strip():
-                labeled_containers = result.stdout.strip().split('\n')
-                for container_id in labeled_containers:
-                    if container_id.strip():
-                        current_app.logger.info(f"Stopping missed labeled container {container_id}")
-                        subprocess.run(["docker", "stop", container_id.strip()], capture_output=True, text=True)
+            # Check for both regular and master containers
+            for label in ["managed-by=lti-juice-shop", "managed-by=lti-juice-shop-master"]:
+                list_cmd = ["docker", "ps", "-q", "--filter", f"label={label}"]
+                result = subprocess.run(list_cmd, capture_output=True, text=True)
+                
+                if result.returncode == 0 and result.stdout.strip():
+                    labeled_containers = result.stdout.strip().split('\n')
+                    for container_id in labeled_containers:
+                        if container_id.strip():
+                            current_app.logger.info(f"Stopping missed labeled container {container_id}")
+                            subprocess.run(["docker", "stop", container_id.strip()], capture_output=True, text=True)
         except Exception as e:
             current_app.logger.error(f"Error cleaning up labeled containers: {str(e)}")
         

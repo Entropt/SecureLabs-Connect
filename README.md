@@ -1,4 +1,4 @@
-# Refactored LTI Integration for Juice Shop
+# LTI Integration for Juice Shop
 
 This project provides integration between Canvas LMS and OWASP Juice Shop using LTI Advantage standards. 
 The code has been refactored to improve organization and maintainability while preserving the original functionality.

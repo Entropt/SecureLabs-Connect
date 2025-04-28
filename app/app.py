@@ -9,7 +9,7 @@ from flask_caching import Cache
 from config import config, PAGE_TITLE
 from models.database import init_db
 from utils.helpers import ReverseProxied
-from services.docker_service import cleanup_all_containers, cleanup_expired_instances
+from services.docker_service import cleanup_all_containers, cleanup_expired_instances, start_master_juice_shop, stop_master_juice_shop
 from routes import all_blueprints
 from pylti1p3.contrib.flask import FlaskMessageLaunch
 
@@ -86,5 +86,13 @@ if __name__ == '__main__':
     
     # Start the cleanup thread
     cleanup_thread = start_cleanup_thread()
+    
+    # Start the master Juice Shop container
+    with app.app_context():
+        start_result = start_master_juice_shop()
+        if start_result['success']:
+            app.logger.info("Master Juice Shop container started successfully")
+        else:
+            app.logger.error(f"Failed to start master Juice Shop container: {start_result.get('message', 'Unknown error')}")
     
     app.run(host='0.0.0.0', port=9001)
