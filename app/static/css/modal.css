@@ -79,12 +79,17 @@
     padding: 15px;
     border-radius: 8px;
     margin-top: 15px;
+    /* Add these properties to fix text overflow */
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    max-height: 300px;
+    overflow-y: auto;
 }
 
-.modal-description h4 {
-    margin-top: 0;
-    color: #3c4043;
-    margin-bottom: 10px;
+.modal-description p {
+    margin: 0;
+    white-space: pre-line; /* Preserve line breaks in descriptions */
+    word-break: break-word; /* Break long words if needed */
 }
 
 /* Responsive adjustments */

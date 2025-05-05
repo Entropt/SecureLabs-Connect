@@ -173,6 +173,17 @@
     border-radius: 6px;
     border: 1px solid #e0e0e0;
     margin-bottom: 20px;
+    /* Add these properties to fix text overflow */
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.detail-description p {
+    margin: 0;
+    white-space: pre-line; /* Preserve line breaks */
+    word-break: break-word; /* Break long words if needed */
 }
 
 .detail-description h4 {
