@@ -39,6 +39,7 @@ class InstanceManager {
     
     /**
      * Check the status of the user's instance
+     * With enhanced verification to ensure the instance container is running
      * @returns {Promise<Object>} Instance data if available
      */
     async checkInstanceStatus() {
@@ -61,7 +62,6 @@ class InstanceManager {
                 this.uiController.showInstanceExists(data);
                 
                 // Set instance status to ready
-                const wasReady = this.instanceIsReady;
                 this.instanceIsReady = true;
                 
                 // Return data for other components to use
@@ -69,8 +69,14 @@ class InstanceManager {
             } else {
                 this.instanceIsReady = false;
                 this.currentInstanceUrl = null;
-                this.uiController.showNoInstance();
-                return null;
+                
+                // Show an appropriate message if we know the reason
+                if (data.reason === 'Container not running') {
+                    this.uiController.showError('Your container is no longer running. It may have been stopped or deleted. Please create a new instance.');
+                } else {
+                    this.uiController.showNoInstance();
+                }
+                return data;  // Return data even for non-existent instance for error handling
             }
         } catch (error) {
             console.error('Error checking instance status:', error);
@@ -83,6 +89,7 @@ class InstanceManager {
     
     /**
      * Get instance status without changing UI state
+     * Now with container verification
      * @returns {Promise<Object>} Instance data if available
      */
     async getInstanceStatus() {
@@ -93,7 +100,15 @@ class InstanceManager {
                 throw new Error('Network response was not ok');
             }
             
-            return await response.json();
+            const data = await response.json();
+            
+            // Reset any stored URL if the instance doesn't exist anymore
+            if (!data.exists) {
+                this.currentInstanceUrl = null;
+                this.instanceIsReady = false;
+            }
+            
+            return data;
         } catch (error) {
             console.error('Error getting instance status:', error);
             return null;
@@ -102,15 +117,39 @@ class InstanceManager {
     
     /**
      * Continue to the instance in a new tab
+     * With real-time container verification to ensure the instance is actually running
      */
     async continueToInstance() {
         try {
-            const data = await this.getInstanceStatus();
+            this.uiController.showLoading();
+            
+            // Always request fresh instance status to prevent using cached URL
+            const data = await fetch(`/api/instance-status/${launchId}/${userId}?verification=strict`).then(res => res.json());
             
             if (data && data.exists && data.url) {
+                // Update the stored URL before opening
+                this.currentInstanceUrl = data.url;
+                this.instanceIsReady = true;
+                
+                // Show the instance exists again before opening the tab
+                this.uiController.showInstanceExists(data);
+                
+                // Open the instance in a new tab
                 window.open(data.url, '_blank');
             } else {
-                this.uiController.showError('Instance URL not available');
+                // If instance no longer exists but we had a URL before, it means it was deleted or expired
+                if (this.currentInstanceUrl && !data.exists) {
+                    if (data.reason === 'Container not running') {
+                        this.uiController.showContainerError('Your instance container is no longer running. It may have been stopped when the server restarted. Please create a new instance.');
+                    } else {
+                        this.uiController.showError('Your instance has expired or been deleted. Please create a new instance.');
+                    }
+                    // Reset the stored URL
+                    this.currentInstanceUrl = null;
+                    this.instanceIsReady = false;
+                } else {
+                    this.uiController.showError('Instance URL not available');
+                }
             }
         } catch (error) {
             console.error('Error:', error);
@@ -234,6 +273,7 @@ class InstanceManager {
     
     /**
      * Poll instance status until ready
+     * Now with improved container verification
      */
     pollInstanceCreation() {
         // Check status every 5 seconds until instance is ready
@@ -244,6 +284,10 @@ class InstanceManager {
                 if (data && data.exists && data.status === 'running') {
                     clearInterval(pollInterval);
                     await this.checkInstanceStatus();
+                } else if (data && !data.exists && data.reason === 'Container not running') {
+                    // Container was created but isn't running anymore
+                    clearInterval(pollInterval);
+                    this.uiController.showContainerError('Container failed to start properly. Please try creating a new instance.');
                 }
             } catch (error) {
                 console.error('Error polling instance status:', error);

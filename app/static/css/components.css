@@ -263,3 +263,28 @@
     opacity: 1;
     transition: opacity 0.5s;
 }
+
+.status-section.error {
+    color: #d32f2f;
+    border-left: 3px solid #d32f2f;
+    padding-left: 15px;
+}
+
+/* Special styling for container verification errors */
+.status-section.error.container-error {
+    background-color: rgba(211, 47, 47, 0.1);
+    border-left: 3px solid #d32f2f;
+    border-radius: 4px;
+    padding: 10px 15px;
+    margin-bottom: 15px;
+}
+
+.status-section.error.container-error #retry-btn {
+    background-color: #d32f2f;
+    color: white;
+    margin-top: 10px;
+}
+
+.status-section.error.container-error #retry-btn:hover {
+    background-color: #b71c1c;
+}

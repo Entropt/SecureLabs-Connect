@@ -350,4 +350,23 @@ class UIController {
             setTimeout(() => notification.remove(), 500);
         }, duration);
     }
+    
+    /**
+     * Show container verification error
+     * @param {string} message - Error message to display
+     */
+    showContainerError(message) {
+        // Hide all sections
+        this.hideAllSections();
+        
+        // Show error message
+        this.errorText.textContent = message;
+        this.errorMessageSection.style.display = 'block';
+        
+        // Add special styling to indicate container-specific error
+        this.errorMessageSection.classList.add('container-error');
+        
+        // Log the error
+        console.warn('Container verification failed:', message);
+    }
 }

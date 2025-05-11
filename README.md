@@ -63,7 +63,18 @@ app/
 
 ## Setup and Installation
 
-1. Configure configs/app.json file with your LTI settings
+1. Set up a new encryption key pair and convert to jwk file
+   ```bash
+   $ openssl genrsa -out private.key 4096
+
+   $ openssl rsa -in private.key -pubout -out public.key
+   writing RSA key
+
+   $ python convert.py
+   JWK file created successfully as public.jwk.json
+   ```
+
+2. Configure configs/app.json file with your LTI settings
    ```json
    {
       "https://canvas.instructure.com" : [{
@@ -85,22 +96,17 @@ app/
    }
    ```
 
-2. Create a virtual environment and install dependencies
+3. Create a virtual environment and install dependencies
    ```bash
    python -m venv .venv
    source .venv/bin/activate
    pip install -r requirements.txt
    ```
 
-3. Run the application
+4. Run the application
    ```bash
    cd app
    python app.py
-   ```
-
-4. Set up local Juice Shop instance in port 3000
-   ```bash
-   docker run --rm -e "NODE_ENV=unsafe" -p 127.0.0.1:3000:3000 bkimminich/juice-shop
    ```
 
 5. Configure your LTI tool in Canvas LMS with:
@@ -109,7 +115,7 @@ app/
    LTI Launch URL: http://<ip_address>:9001/assignment/
    JWKS URL: http://<ip_address>:9001/jwks/
    ```
-**Note:** In case the error pop up in score phase, change JWKS to manually input and copy jwk in above URL to LTI Key.
+   **Note:** In case the error pop up in score phase, change JWKS to manually input and copy jwk in above URL to LTI Key.
 
 6. Change necessary settings in `app.json`after deploy the app's information in a specific course
 

@@ -6,6 +6,7 @@ from models.database import get_db_connection
 def get_user_instance(user_id):
     """Get user's Juice Shop instance"""
     from flask import current_app
+    from services.docker_service import is_container_running
     
     conn = get_db_connection()
     c = conn.cursor()
@@ -14,14 +15,26 @@ def get_user_instance(user_id):
     instance = c.fetchone()
     
     if instance:
-        # Update last accessed time
-        c.execute("UPDATE instances SET last_accessed=? WHERE id=?", 
-                 (datetime.now().isoformat(), instance['id']))
-        conn.commit()
+        # Check if container is actually running in Docker
+        container_id = instance['container_id']
+        container_running = is_container_running(container_id)
         
-        instance_dict = dict(instance)
-        instance_dict['url'] = f"http://{current_app.config['HOST_IP']}:{instance['port']}"
-        instance_dict['exists'] = True
+        if container_running:
+            # Update last accessed time
+            c.execute("UPDATE instances SET last_accessed=? WHERE id=?", 
+                    (datetime.now().isoformat(), instance['id']))
+            conn.commit()
+            
+            instance_dict = dict(instance)
+            instance_dict['url'] = f"http://{current_app.config['HOST_IP']}:{instance['port']}"
+            instance_dict['exists'] = True
+        else:
+            # Container not running, update status in database
+            c.execute("UPDATE instances SET status=? WHERE id=?", ('stopped', instance['id']))
+            conn.commit()
+            
+            current_app.logger.warning(f"Instance {instance['id']} marked as running but container not found")
+            instance_dict = {'exists': False, 'reason': 'Container not running'}
     else:
         instance_dict = {'exists': False}
     

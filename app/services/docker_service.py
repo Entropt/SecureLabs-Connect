@@ -7,6 +7,24 @@ running_containers = []
 # Global variable to track the master Juice Shop container for challenges
 master_juice_shop_container = None
 
+def is_container_running(container_id):
+    """Check if a Docker container exists and is running"""
+    try:
+        # Check if container exists and is running
+        cmd = ["docker", "inspect", "--format='{{.State.Running}}'", container_id]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        # If command executed successfully and output contains "true", container is running
+        if result.returncode == 0 and 'true' in result.stdout.lower():
+            return True
+        
+        # Container not found or not running
+        current_app.logger.warning(f"Container {container_id} not running or not found: {result.stderr}")
+        return False
+    except Exception as e:
+        current_app.logger.error(f"Error checking container {container_id} status: {str(e)}")
+        return False
+
 def create_docker_instance(user_id, assignment_id=None):
     """Create a new Juice Shop Docker instance for the user"""
     try:
